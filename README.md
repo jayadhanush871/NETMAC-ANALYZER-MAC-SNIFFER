@@ -2,6 +2,107 @@
 
 **NetMAC Analyzer** is an automated, real-time Layer-2 and Layer-3 network packet capture and hardware address analysis framework developed in Python. Engineered specifically for **targeted virtual hotspot adapter monitoring**, it enforces a strict **zero-packet idle baseline**, performs **bitwise link-layer MAC privacy classification (LAA vs. UAA)**, resolves **hardware manufacturer OUIs**, and correlates multi-layer flows with a **Wireshark-style interactive web dashboard**.
 
+---
+
+## 👥 Project Team & Academic Information
+
+* **Project Title:** NetMAC Analyzer: MAC Address Sniffer
+* **Team Number:** Team 23
+* **Slot:** F1 + TF1
+* **Course:** Computer Networks
+* **Guide:** A. Suresh Sir (Assistant Professor)
+* **Team Members:**
+  1. **CH. SUMANTH**
+  2. **K. NANI BABU**
+  3. **J. JAYA DHANUSH**
+
+---
+
+## 📥 Installation & Requirements Setup Guide
+
+Follow these steps when setting up the project on a new computer or after downloading from GitHub.
+
+### Step 1: Install Python
+Ensure Python 3.10 or higher is installed:
+* Download from: [https://www.python.org/downloads/](https://www.python.org/downloads/)
+* **Important:** During installation, check the box **"Add Python to PATH"**.
+
+---
+
+### Step 2: Install Npcap (Required for Windows Packet Capture)
+On Windows, packet sniffers require the **Npcap kernel driver** to capture raw network frames:
+1. Download the free installer from: **[https://npcap.com/#download](https://npcap.com/#download)**
+2. Run the installer.
+3. **Crucial:** During setup, make sure to check the box:  
+   ☑ **"Install Npcap in WinPcap API-compatible Mode"**
+4. Complete the installation and restart your terminal if prompted.
+
+---
+
+### Step 3: Download / Clone the Repository
+Open PowerShell or Command Prompt and clone the repository:
+```powershell
+git clone https://github.com/jayadhanush871/NETMAC-ANALYZER-MAC-SNIFFER.git
+cd NETMAC-ANALYZER-MAC-SNIFFER
+```
+*(Or download the ZIP from GitHub and extract it to a folder).*
+
+---
+
+### Step 4: Install Required Python Libraries
+Inside the project folder, install all required dependencies using `pip`:
+
+```powershell
+pip install -r requirements.txt
+```
+
+*Or install them directly:*
+```powershell
+pip install flask scapy
+```
+
+> **Note on `ModuleNotFoundError: No module named 'flask'`:**  
+> If you see this error when running `run.bat` or `main.py`, it means Step 4 was skipped. Running `pip install -r requirements.txt` will immediately resolve it.
+
+---
+
+## 🚀 How to Run
+
+### Option 1: One-Click Windows Launcher (Recommended)
+Double-click `run.bat` or run in terminal:
+```powershell
+.\run.bat
+```
+*(The launcher checks dependencies, automatically installs any missing libraries, starts the server, and opens your browser).*
+
+---
+
+### Option 2: Python Command
+```powershell
+python main.py
+```
+This initializes the sniffer, binds to the virtual hotspot adapter, and launches the dashboard in your default browser at:  
+👉 **`http://127.0.0.1:8080`**
+
+---
+
+### Option 3: All-In-One Standalone File
+To run the entire consolidated system from a single script:
+```powershell
+python netmac_analyzer_complete.py
+```
+
+---
+
+### Option 4: Run the Automated Unit Test Suite
+To verify that all endpoints, bitwise classification logic, and hex formatting are working:
+```powershell
+python test_app.py
+```
+*(Executes 6 automated test cases with 100% pass rate).*
+
+---
+
 ## 🌟 Key Features
 
 1. **Zero-Packet Baseline (`0 Packets` at Startup)**:
@@ -50,34 +151,6 @@
 
 ---
 
-## 🚀 How to Run
-
-### Method 1: One-Click Windows Launcher
-Double-click `run.bat` or run in terminal:
-```powershell
-.\run.bat
-```
-
-### Method 2: Python Command
-```powershell
-python main.py
-```
-This automatically initializes the server, detects the hotspot adapter, and launches the web interface at:
-`http://127.0.0.1:8080`
-
-### Method 3: All-In-One Standalone File
-```powershell
-python netmac_analyzer_complete.py
-```
-
-### Running the Automated Unit Test Suite
-```powershell
-python test_app.py
-```
-*(All 6 unit tests cover endpoints, bitwise classification, parsing, and hex dumps).*
-
----
-
 ## 📁 Repository Structure
 
 ```
@@ -88,7 +161,8 @@ python test_app.py
 ├── main.py                     # Auto-Launcher & Port Discovery
 ├── netmac_analyzer_complete.py # Consolidated All-in-One Standalone Script
 ├── test_app.py                 # Automated Test Suite (6 Test Cases)
-├── run.bat                     # Windows Batch Launcher Script
+├── requirements.txt            # Python Dependencies (flask, scapy)
+├── run.bat                     # Windows Batch Launcher Script with Auto-Installer
 ├── templates/
 │   └── index.html              # Tri-Pane Web Interface Template
 └── static/
