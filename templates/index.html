@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetShark - MAC & IP Packet Analyzer</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="dark-theme">
+    <div class="app-container">
+        <!-- Top Navigation / Brand Header -->
+        <header class="app-header">
+            <div class="brand">
+                <div class="brand-icon">🦈</div>
+                <div class="brand-text">
+                    <h1>NetShark <span class="badge badge-accent">MAC & IP Analyzer</span></h1>
+                    <p class="subtitle">Real-time Layer-2/3 Network Packet Sniffer & Hotspot Traffic Inspector</p>
+                </div>
+            </div>
+            <div class="header-status-card">
+                <div class="hotspot-badge" id="hotspotStatusBadge">
+                    <span class="status-dot dot-orange"></span>
+                    <span>Hotspot: <strong id="hotspotGatewayInfo">192.168.137.1</strong></span>
+                    <span class="separator">|</span>
+                    <span>Phone: <strong id="hotspotClientInfo">192.168.137.157</strong></span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Wireshark Control Toolbar -->
+        <section class="toolbar-section">
+            <div class="toolbar-controls">
+                <!-- Interface Selection -->
+                <div class="control-group">
+                    <label for="interfaceSelect"><span class="icon">🔌</span> Interface:</label>
+                    <select id="interfaceSelect" class="styled-select">
+                        <option value="">Detecting interfaces...</option>
+                    </select>
+                </div>
+
+                <!-- Filter Preset Selection -->
+                <div class="control-group">
+                    <label for="filterPresetSelect"><span class="icon">🎯</span> Capture Filter Mode:</label>
+                    <select id="filterPresetSelect" class="styled-select select-highlight">
+                        <option value="phone_all" selected>📱 All Phone Activity (Apps, Social Media, Streaming, Games, Browsing)</option>
+                        <option value="browsing">🌐 Web Browsing Only (DNS + HTTP + HTTPS)</option>
+                        <option value="all">⚡ All Packets on Interface (Unfiltered)</option>
+                        <option value="custom">⚙️ Custom BPF Filter Expression</option>
+                    </select>
+                </div>
+
+                <!-- Custom BPF Input -->
+                <div class="control-group hidden" id="customBpfContainer">
+                    <label for="customBpfInput">Custom BPF:</label>
+                    <input type="text" id="customBpfInput" class="styled-input" placeholder="e.g. host 192.168.137.157 and port 443">
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="action-buttons">
+                    <button id="btnStart" class="btn btn-success" title="Start live sniffing">
+                        <span class="icon">▶</span> Start Sniffing
+                    </button>
+                    <button id="btnPause" class="btn btn-warning" title="Pause packet ingestion" disabled>
+                        <span class="icon">⏸</span> Pause
+                    </button>
+                    <button id="btnStop" class="btn btn-danger" title="Stop capture" disabled>
+                        <span class="icon">⏹</span> Stop
+                    </button>
+                    <button id="btnClear" class="btn btn-secondary" title="Reset packet count strictly back to 0">
+                        <span class="icon">🗑</span> Reset (0 Pkts)
+                    </button>
+                    <div class="btn-divider"></div>
+                    <button id="btnExportPcap" class="btn btn-outline" title="Export as Wireshark PCAP file">
+                        <span class="icon">💾</span> PCAP
+                    </button>
+                    <button id="btnExportCsv" class="btn btn-outline" title="Export summary as CSV">
+                        <span class="icon">📄</span> CSV
+                    </button>
+                </div>
+            </div>
+
+            <!-- Notice Banner for Zero Packets until Phone is Used -->
+            <div class="browsing-banner">
+                <span class="banner-icon">💡</span>
+                <span id="bannerText"><strong>Phone Activity Mode Active:</strong> Starts strictly at 0 packets. Generates packets whenever you use your phone (WhatsApp, Instagram, YouTube, apps, calls, streaming, games, or browsing)!</span>
+            </div>
+        </section>
+
+        <!-- Live Metrics Bar -->
+        <section class="metrics-bar">
+            <div class="metric-card">
+                <div class="metric-label">Total Packets</div>
+                <div class="metric-value metric-accent" id="metricPacketCount">0</div>
+                <div class="metric-sub" id="metricPps">0 pkts/sec</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Sniffer Status</div>
+                <div class="metric-value" id="metricState">
+                    <span class="status-indicator indicator-stopped"></span> STOPPED
+                </div>
+                <div class="metric-sub" id="metricInterfaceName">-</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Data Transferred</div>
+                <div class="metric-value" id="metricBytes">0 KB</div>
+                <div class="metric-sub" id="metricBytesDetail">0 bytes on wire</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Elapsed Time</div>
+                <div class="metric-value" id="metricElapsed">00:00:00</div>
+                <div class="metric-sub">Session Duration</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Unique MACs</div>
+                <div class="metric-value" id="metricUniqueMacs">0</div>
+                <div class="metric-sub" id="metricUniqueIps">0 active IPs</div>
+            </div>
+        </section>
+
+        <!-- View Switcher Tabs -->
+        <div class="view-tabs">
+            <button class="tab-btn active" data-tab="tab-packets">
+                <span class="icon">📋</span> Packet Monitor (Wireshark View)
+            </button>
+            <button class="tab-btn" data-tab="tab-mac-analysis">
+                <span class="icon">🏷️</span> MAC Address Analytics & OUI Inspector
+            </button>
+        </div>
+
+        <!-- TAB 1: Packet Monitor View -->
+        <main class="tab-content active" id="tab-packets">
+            <!-- Filter & Search Toolbar -->
+            <div class="table-filter-bar">
+                <div class="search-box">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="packetSearchInput" placeholder="Filter by MAC, IP (e.g. 192.168.137.157), Port, or Info...">
+                    <button id="btnClearSearch" class="btn-clear-search">&times;</button>
+                </div>
+                <div class="protocol-pills">
+                    <span class="pill-label">Protocol:</span>
+                    <button class="proto-pill active" data-proto="">ALL</button>
+                    <button class="proto-pill" data-proto="DNS">DNS</button>
+                    <button class="proto-pill" data-proto="HTTPS">HTTPS</button>
+                    <button class="proto-pill" data-proto="HTTP">HTTP</button>
+                    <button class="proto-pill" data-proto="TCP">TCP</button>
+                    <button class="proto-pill" data-proto="UDP">UDP</button>
+                    <button class="proto-pill" data-proto="ARP">ARP</button>
+                    <button class="proto-pill" data-proto="ICMP">ICMP</button>
+                </div>
+                <div class="autoscroll-control">
+                    <label>
+                        <input type="checkbox" id="chkAutoScroll" checked> Auto-Scroll
+                    </label>
+                </div>
+            </div>
+
+            <!-- Main Packet Table -->
+            <div class="packet-table-wrapper" id="packetTableContainer">
+                <table class="packet-table" id="packetTable">
+                    <thead>
+                        <tr>
+                            <th class="col-id">No.</th>
+                            <th class="col-time">Time</th>
+                            <th class="col-mac">Source MAC</th>
+                            <th class="col-mac">Destination MAC</th>
+                            <th class="col-ip">Source IP</th>
+                            <th class="col-ip">Destination IP</th>
+                            <th class="col-proto">Protocol</th>
+                            <th class="col-len">Length</th>
+                            <th class="col-info">Info</th>
+                        </tr>
+                    </thead>
+                    <tbody id="packetTableBody">
+                        <tr class="empty-row" id="emptyRowPlaceholder">
+                            <td colspan="9">
+                                <div class="empty-state">
+                                    <div class="empty-icon">📡</div>
+                                    <div class="empty-title">Ready to Capture (0 Packets)</div>
+                                    <div class="empty-desc">Click <strong>Start Sniffing</strong> above to begin listening on the Mobile Hotspot adapter.<br>Packets will generate as soon as you use your phone (open any app, stream video, or browse)!</div>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Bottom Split Panes: Inspection Tree & Hex Dump (Wireshark 3-pane style) -->
+            <div class="packet-inspection-pane" id="inspectionPane">
+                <div class="inspection-header">
+                    <div class="inspection-title" id="inspectionTitle">
+                        <span>🔎 Packet Details: Select a packet above to inspect</span>
+                    </div>
+                    <div class="inspection-actions">
+                        <span id="selectedPacketBadge" class="badge badge-outline">No packet selected</span>
+                    </div>
+                </div>
+                <div class="inspection-body">
+                    <!-- Left: Layer Tree View -->
+                    <div class="layer-tree-container" id="layerTreeContainer">
+                        <div class="tree-placeholder">Click any row in the packet table to inspect its Ethernet II, IP, and Transport layers here.</div>
+                    </div>
+                    <!-- Right: Wireshark Hex Dump -->
+                    <div class="hex-dump-container">
+                        <div class="hex-dump-header">Hex & ASCII Dump</div>
+                        <pre class="hex-dump-content" id="hexDumpContent">0000   -- No packet selected --</pre>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- TAB 2: MAC Address Analytics View -->
+        <main class="tab-content" id="tab-mac-analysis">
+            <div class="mac-dashboard">
+                <!-- MAC Cards Overview -->
+                <div class="mac-cards-grid">
+                    <div class="mac-summary-card">
+                        <div class="card-title">📱 Identified Hotspot Phone</div>
+                        <div class="card-mac-val" id="macPhoneMac">ae:67:24:c3:3a:ff</div>
+                        <div class="card-detail">IP: <span id="macPhoneIp">192.168.137.157</span></div>
+                        <div class="card-detail">Classification: <span class="badge badge-laa">LAA (Randomized MAC)</span></div>
+                        <div class="card-detail">Privacy: <span class="text-success">Phone MAC Privacy Active</span></div>
+                    </div>
+                    <div class="mac-summary-card">
+                        <div class="card-title">💻 Laptop Hotspot Gateway</div>
+                        <div class="card-mac-val" id="macGatewayMac">ea:41:f4:b6:20:f0</div>
+                        <div class="card-detail">IP: <span>192.168.137.1</span></div>
+                        <div class="card-detail">Vendor: <span>Microsoft / Wi-Fi Direct Virtual NIC</span></div>
+                        <div class="card-detail">Classification: <span class="badge badge-uaa">Gateway Adapter</span></div>
+                    </div>
+                    <div class="mac-summary-card">
+                        <div class="card-title">📊 Layer-2 MAC Distribution</div>
+                        <div class="distribution-stats">
+                            <div>Unicast: <strong id="statUnicast">0</strong></div>
+                            <div>Broadcast: <strong id="statBroadcast">0</strong></div>
+                            <div>Multicast: <strong id="statMulticast">0</strong></div>
+                            <div>Randomized (LAA): <strong id="statLaa">0</strong></div>
+                            <div>Hardware (UAA): <strong id="statUaa">0</strong></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MAC Devices Inventory Table -->
+                <div class="mac-section">
+                    <div class="section-title">
+                        <h3>📋 Observed MAC Addresses & Device Inventory</h3>
+                        <span class="subtitle">Complete Layer-2 hardware and randomized MAC addresses detected on wire</span>
+                    </div>
+                    <div class="table-wrapper">
+                        <table class="styled-table" id="macDevicesTable">
+                            <thead>
+                                <tr>
+                                    <th>MAC Address</th>
+                                    <th>Role / Device</th>
+                                    <th>Vendor / OUI</th>
+                                    <th>Type</th>
+                                    <th>Administration</th>
+                                    <th>Observed IP(s)</th>
+                                    <th>Pkts Sent</th>
+                                    <th>Pkts Rcvd</th>
+                                    <th>Total Data</th>
+                                    <th>Protocols</th>
+                                </tr>
+                            </thead>
+                            <tbody id="macDevicesTableBody">
+                                <tr><td colspan="10" class="text-center">No MAC addresses observed yet. Start capture to detect devices.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- MAC Conversations Matrix Table -->
+                <div class="mac-section">
+                    <div class="section-title">
+                        <h3>🔄 MAC Flow Conversations Matrix</h3>
+                        <span class="subtitle">Layer-2 talker pairs communicating across the hotspot</span>
+                    </div>
+                    <div class="table-wrapper">
+                        <table class="styled-table" id="macConversationsTable">
+                            <thead>
+                                <tr>
+                                    <th>Station A (MAC)</th>
+                                    <th>Station A Role</th>
+                                    <th>Station B (MAC)</th>
+                                    <th>Station B Role</th>
+                                    <th>Packets Exchanged</th>
+                                    <th>Total Volume</th>
+                                    <th>Protocols</th>
+                                </tr>
+                            </thead>
+                            <tbody id="macConversationsTableBody">
+                                <tr><td colspan="7" class="text-center">No conversation flows detected yet.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="app-footer">
+            <div>NetShark MAC & IP Sniffer | Computer Networks Lab Analysis Tool</div>
+            <div class="footer-links">
+                <span>Phone: <strong>192.168.137.157</strong></span>
+                <span>•</span>
+                <span>Hotspot Gateway: <strong>192.168.137.1</strong></span>
+                <span>•</span>
+                <span>Laptop WiFi: <strong>172.16.210.160</strong></span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Application Script -->
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
