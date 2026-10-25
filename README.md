@@ -2,22 +2,6 @@
 
 **NetMAC Analyzer** is an automated, real-time Layer-2 and Layer-3 network packet capture and hardware address analysis framework developed in Python. Engineered specifically for **targeted virtual hotspot adapter monitoring**, it enforces a strict **zero-packet idle baseline**, performs **bitwise link-layer MAC privacy classification (LAA vs. UAA)**, resolves **hardware manufacturer OUIs**, and correlates multi-layer flows with a **Wireshark-style interactive web dashboard**.
 
----
-
-## 👥 Project Team & Academic Information
-
-* **Project Title:** NetMAC Analyzer: MAC Address Sniffer
-* **Team Number:** Team 23
-* **Slot:** F1 + TF1
-* **Course:** Computer Networks
-* **Guide:** A. Suresh Sir (Assistant Professor)
-* **Team Members:**
-  1. **CH. SUMANTH**
-  2. **K. NANI BABU**
-  3. **J. JAYA DHANUSH**
-
----
-
 ## 🌟 Key Features
 
 1. **Zero-Packet Baseline (`0 Packets` at Startup)**:
