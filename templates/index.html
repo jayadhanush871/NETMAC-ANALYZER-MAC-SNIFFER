@@ -120,6 +120,68 @@
             </div>
         </section>
 
+        <!-- Dynamic Live Traffic Analytics & Visual Charts (Hidden initially at 0 packets, appears only after packets are generated) -->
+        <section id="liveChartsSection" class="charts-section hidden" style="display: none;">
+            <div class="charts-header">
+                <div class="charts-header-left">
+                    <span class="charts-icon">📊</span>
+                    <span class="charts-title">Real-Time Traffic & Protocol Analytics</span>
+                    <span class="badge badge-accent" id="chartsPacketBadge">0 Packets Analyzed</span>
+                </div>
+                <div class="charts-header-right">
+                    <span class="charts-live-indicator"><span class="pulse-dot"></span> Live Telemetry</span>
+                    <button id="btnToggleChartsCollapse" class="btn-charts-toggle" title="Toggle Charts View">
+                        <span id="collapseIcon">▾</span> <span id="collapseText">Minimize</span>
+                    </button>
+                </div>
+            </div>
+            <div class="charts-grid" id="chartsGrid">
+                <!-- Chart 1: Protocol Distribution (Donut) -->
+                <div class="chart-card">
+                    <div class="chart-card-header">
+                        <div class="chart-title"><span class="icon">🍩</span> Protocol Distribution</div>
+                        <div class="chart-subtitle">Layer-3 / Layer-4 breakdown of captured packets</div>
+                    </div>
+                    <div class="chart-canvas-wrapper donut-wrapper">
+                        <canvas id="chartProtocol"></canvas>
+                    </div>
+                </div>
+
+                <!-- Chart 2: Packet Capture Over Time (Line) -->
+                <div class="chart-card">
+                    <div class="chart-card-header">
+                        <div class="chart-title"><span class="icon">📈</span> Packet Capture Over Time</div>
+                        <div class="chart-subtitle">Ingestion rate (packets per interval)</div>
+                    </div>
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="chartPacketsTime"></canvas>
+                    </div>
+                </div>
+
+                <!-- Chart 3: Data Transfer Over Time (Line) -->
+                <div class="chart-card">
+                    <div class="chart-card-header">
+                        <div class="chart-title"><span class="icon">📉</span> Data Transfer Over Time</div>
+                        <div class="chart-subtitle">Throughput volume (KB transferred over time)</div>
+                    </div>
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="chartDataTime"></canvas>
+                    </div>
+                </div>
+
+                <!-- Chart 4: Top MAC Addresses by Traffic (Horizontal Bar) -->
+                <div class="chart-card">
+                    <div class="chart-card-header">
+                        <div class="chart-title"><span class="icon">📊</span> Top MAC Addresses by Traffic</div>
+                        <div class="chart-subtitle">Layer-2 endpoint talkers ranked by volume</div>
+                    </div>
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="chartTopMacs"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- View Switcher Tabs -->
         <div class="view-tabs">
             <button class="tab-btn active" data-tab="tab-packets">
@@ -312,6 +374,13 @@
         </footer>
     </div>
 
+    <!-- Chart.js Engine (Offline bundled + CDN fallback) -->
+    <script src="/static/js/chart.umd.min.js"></script>
+    <script>
+        if (typeof Chart === 'undefined') {
+            document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"><\/script>');
+        }
+    </script>
     <!-- Application Script -->
     <script src="/static/js/app.js"></script>
 </body>

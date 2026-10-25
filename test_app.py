@@ -1,7 +1,7 @@
 """
 test_app.py
 Comprehensive test suite verifying all REST API endpoints,
-initial 0-packet state, packet parsing, and MAC analytics.
+initial 0-packet state, packet parsing, MAC analytics, and chart setup.
 """
 
 import unittest
@@ -55,7 +55,6 @@ class NetSharkTestCase(unittest.TestCase):
         Simulates an incoming browsing packet (DNS Query & HTTPS TCP)
         and verifies parsing, IP & MAC extraction, and MAC tracker.
         """
-        # Create a synthetic DNS packet
         pkt = (
             scapy.Ether(src="ae:67:24:c3:3a:ff", dst="ea:41:f4:b6:20:f0")
             / scapy.IP(src="192.168.137.157", dst="8.8.8.8")
@@ -63,7 +62,6 @@ class NetSharkTestCase(unittest.TestCase):
             / scapy.DNS(rd=1, qd=scapy.DNSQR(qname="www.wikipedia.org"))
         )
 
-        # Start sniffer manually in state RUNNING
         sniffer.state = "RUNNING"
         sniffer._packet_callback(pkt)
 
@@ -80,7 +78,7 @@ class NetSharkTestCase(unittest.TestCase):
         # Verify MAC addresses
         self.assertEqual(p["src_mac"], "ae:67:24:c3:3a:ff")
         self.assertEqual(p["dst_mac"], "ea:41:f4:b6:20:f0")
-        self.assertTrue(p["src_mac_randomized"])  # LAA Randomized MAC for Phone
+        self.assertTrue(p["src_mac_randomized"])
         
         # Verify IP addresses
         self.assertEqual(p["src_ip"], "192.168.137.157")
@@ -101,7 +99,6 @@ class NetSharkTestCase(unittest.TestCase):
 
     def test_clear_resets_to_zero(self):
         """Verifies that calling clear resets packet count strictly to 0."""
-        # Inject packet
         pkt = scapy.Ether(src="ae:67:24:c3:3a:ff", dst="ea:41:f4:b6:20:f0") / scapy.IP(src="192.168.137.157", dst="1.1.1.1")
         sniffer.state = "RUNNING"
         sniffer._packet_callback(pkt)
@@ -132,6 +129,29 @@ class NetSharkTestCase(unittest.TestCase):
         self.assertTrue(len(data["hex_dump"]) > 10)
         self.assertTrue(len(data["layer_tree"]) >= 3)
         self.assertIn("0000", data["hex_dump"])
+
+    def test_charts_initial_zero_state_and_canvas_elements(self):
+        """
+        Verifies that initially at 0 packets, the charts section is strictly hidden,
+        and all 4 chart canvas elements (Donut, Line1, Line2, Horizontal Bar) are present.
+        """
+        res = self.client.get("/")
+        self.assertEqual(res.status_code, 200)
+        html = res.get_data(as_text=True)
+
+        # 1. Strictly hidden at initial 0 packets state
+        self.assertIn('id="liveChartsSection"', html)
+        self.assertIn('class="charts-section hidden"', html)
+        self.assertIn('style="display: none;"', html)
+
+        # 2. All 4 requested chart elements present
+        self.assertIn('id="chartProtocol"', html)      # Protocol Distribution (Donut)
+        self.assertIn('id="chartPacketsTime"', html)   # Packet Capture Over Time (Line)
+        self.assertIn('id="chartDataTime"', html)      # Data Transfer Over Time (Line)
+        self.assertIn('id="chartTopMacs"', html)       # Top MAC Addresses by Traffic (Horizontal Bar)
+
+        # 3. Chart.js local bundle script tag
+        self.assertIn('chart.umd.min.js', html)
 
 
 if __name__ == "__main__":

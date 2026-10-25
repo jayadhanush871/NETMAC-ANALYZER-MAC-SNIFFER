@@ -54,11 +54,36 @@ document.addEventListener("DOMContentLoaded", () => {
     const tabContents = document.querySelectorAll(".tab-content");
     const protoPills = document.querySelectorAll(".proto-pill");
 
+    // Dynamic Live Analytics & Visual Charts Elements
+    const liveChartsSection = document.getElementById("liveChartsSection");
+    const chartsGrid = document.getElementById("chartsGrid");
+    const chartsPacketBadge = document.getElementById("chartsPacketBadge");
+    const btnToggleChartsCollapse = document.getElementById("btnToggleChartsCollapse");
+    const collapseIcon = document.getElementById("collapseIcon");
+    const collapseText = document.getElementById("collapseText");
+
+    // Chart.js references & time-series data buffers
+    let chartProtocol = null;
+    let chartPacketsTime = null;
+    let chartDataTime = null;
+    let chartTopMacs = null;
+    let chartsVisible = false;
+    let chartsCollapsed = false;
+
+    const MAX_TIME_SLICES = 16;
+    const timeLabels = [];
+    const packetRateHistory = [];
+    const dataRateHistory = [];
+    let previousPktCount = 0;
+    let previousBytes = 0;
+    let lastMacFetchTime = 0;
+
     // Initialize application
     init();
 
     async function init() {
         setupEventListeners();
+        setupChartsToggle();
         await loadInterfaces();
         updateStatus();
         startStatusPolling();
@@ -198,6 +223,9 @@ document.addEventListener("DOMContentLoaded", () => {
                         state: "STOPPED",
                     });
                     updateUiState("STOPPED");
+
+                    // Hide and destroy charts when cleared back to 0 packets
+                    hideCharts();
                 }
             } catch (err) {
                 console.error("Clear failed:", err);
@@ -259,6 +287,29 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // -------------------------------------------------------------
+    // Charts Collapse / Expand Control
+    // -------------------------------------------------------------
+    function setupChartsToggle() {
+        if (!btnToggleChartsCollapse) return;
+        btnToggleChartsCollapse.addEventListener("click", () => {
+            chartsCollapsed = !chartsCollapsed;
+            if (chartsCollapsed) {
+                chartsGrid.classList.add("collapsed");
+                collapseIcon.textContent = "▸";
+                collapseText.textContent = "Expand";
+            } else {
+                chartsGrid.classList.remove("collapsed");
+                collapseIcon.textContent = "▾";
+                collapseText.textContent = "Minimize";
+                if (chartProtocol) chartProtocol.resize();
+                if (chartPacketsTime) chartPacketsTime.resize();
+                if (chartDataTime) chartDataTime.resize();
+                if (chartTopMacs) chartTopMacs.resize();
+            }
+        });
+    }
+
+    // -------------------------------------------------------------
     // UI State Management
     // -------------------------------------------------------------
     function updateUiState(state) {
@@ -291,9 +342,6 @@ document.addEventListener("DOMContentLoaded", () => {
     let isPollingStatus = false;
     let isFetchingPackets = false;
 
-    // -------------------------------------------------------------
-    // Status Polling Loop
-    // -------------------------------------------------------------
     function startStatusPolling() {
         if (pollInterval) clearInterval(pollInterval);
         pollInterval = setInterval(async () => {
@@ -320,6 +368,19 @@ document.addEventListener("DOMContentLoaded", () => {
             updateStatusMetrics(data);
             if (data.state !== captureState) {
                 updateUiState(data.state);
+            }
+
+            // Manage Real-time Visual Charts:
+            // STRICT RULE: At initial state (0 packets), NO charts are shown.
+            // Charts ONLY appear after packets are captured / generated!
+            const totalPackets = data.packet_count || 0;
+            if (totalPackets > 0) {
+                showCharts(totalPackets);
+                updateTimeSeriesCharts(data);
+                updateProtocolChart();
+                refreshMacAnalyticsForChart();
+            } else if (chartsVisible) {
+                hideCharts();
             }
         } catch (err) {
             // Server might be busy
@@ -385,12 +446,18 @@ document.addEventListener("DOMContentLoaded", () => {
                     }
                 });
 
+                // Update charts when new packets arrive
+                if (capturedPacketsCache.length > 0) {
+                    showCharts(data.total_captured || capturedPacketsCache.length);
+                    updateProtocolChart();
+                }
+
                 // Cap memory cache to 3,000 packets
                 if (capturedPacketsCache.length > 3000) {
                     capturedPacketsCache.splice(0, capturedPacketsCache.length - 3000);
                 }
 
-                // Cap DOM rows to 300 to keep the UI silky smooth and eliminate any browser freeze
+                // Cap DOM rows to 300 to keep the UI silky smooth
                 const rows = packetTableBody.children;
                 while (rows.length > 300) {
                     packetTableBody.removeChild(rows[0]);
@@ -506,7 +573,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             inspectionTitle.innerHTML = `<span>🔎 Frame #${pkt.id} &bull; ${pkt.protocol} &bull; ${pkt.length} bytes</span>`;
 
-            // 1. Render Hex Dump FIRST (Guaranteed to show!)
+            // 1. Render Hex Dump
             hexDumpContent.textContent = pkt.hex_dump || "0000   -- No payload hex data --";
 
             // 2. Render Layer Tree
@@ -655,9 +722,386 @@ document.addEventListener("DOMContentLoaded", () => {
                     convsTableBody.appendChild(tr);
                 });
             }
+
+            // Also update top MACs chart if visible
+            updateTopMacsChart(data);
         } catch (err) {
             console.error("Failed to load MAC analysis:", err);
         }
+    }
+
+    // -------------------------------------------------------------
+    // Real-Time Visual Charts Management (Chart.js)
+    // -------------------------------------------------------------
+    function showCharts(totalPackets) {
+        if (!chartsVisible) {
+            if (liveChartsSection) {
+                liveChartsSection.classList.remove("hidden");
+                liveChartsSection.style.display = "block";
+            }
+            chartsVisible = true;
+            if (!chartProtocol) {
+                initCharts();
+            }
+        }
+        if (chartsPacketBadge) {
+            chartsPacketBadge.textContent = `${totalPackets} Packets Analyzed`;
+        }
+    }
+
+    function hideCharts() {
+        chartsVisible = false;
+        if (liveChartsSection) {
+            liveChartsSection.classList.add("hidden");
+            liveChartsSection.style.display = "none";
+        }
+        timeLabels.length = 0;
+        packetRateHistory.length = 0;
+        dataRateHistory.length = 0;
+        previousPktCount = 0;
+        previousBytes = 0;
+
+        if (chartProtocol) {
+            try { chartProtocol.destroy(); } catch (e) {}
+            chartProtocol = null;
+        }
+        if (chartPacketsTime) {
+            try { chartPacketsTime.destroy(); } catch (e) {}
+            chartPacketsTime = null;
+        }
+        if (chartDataTime) {
+            try { chartDataTime.destroy(); } catch (e) {}
+            chartDataTime = null;
+        }
+        if (chartTopMacs) {
+            try { chartTopMacs.destroy(); } catch (e) {}
+            chartTopMacs = null;
+        }
+    }
+
+    function initCharts() {
+        if (typeof Chart === "undefined") {
+            console.warn("Chart.js library is not loaded yet.");
+            return;
+        }
+
+        // Global Chart Defaults for Dark Theme
+        Chart.defaults.color = "#94a3b8";
+        Chart.defaults.font.family = "'Inter', -apple-system, BlinkMacSystemFont, sans-serif";
+
+        // 1. Protocol Distribution — Donut Chart
+        const ctxProto = document.getElementById("chartProtocol");
+        if (ctxProto && !chartProtocol) {
+            chartProtocol = new Chart(ctxProto, {
+                type: "doughnut",
+                data: {
+                    labels: ["TCP", "UDP", "DNS", "HTTPS", "HTTP", "ARP", "ICMP", "Other"],
+                    datasets: [{
+                        data: [0, 0, 0, 0, 0, 0, 0, 0],
+                        backgroundColor: [
+                            "#3b82f6", // TCP (blue)
+                            "#f97316", // UDP (orange)
+                            "#38bdf8", // DNS (sky)
+                            "#10b981", // HTTPS (emerald)
+                            "#2dd4bf", // HTTP (teal)
+                            "#eab308", // ARP (yellow)
+                            "#f43f5e", // ICMP (rose)
+                            "#64748b"  // Other (slate)
+                        ],
+                        borderColor: "#111827",
+                        borderWidth: 2,
+                        hoverOffset: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: "62%",
+                    plugins: {
+                        legend: {
+                            position: "right",
+                            labels: {
+                                color: "#94a3b8",
+                                font: { size: 11 },
+                                boxWidth: 12,
+                                padding: 6
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => {
+                                    const val = context.raw || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
+                                    return ` ${context.label}: ${val} pkts (${pct}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 2. Packet Capture Over Time — Line Graph
+        const ctxPackets = document.getElementById("chartPacketsTime");
+        if (ctxPackets && !chartPacketsTime) {
+            chartPacketsTime = new Chart(ctxPackets, {
+                type: "line",
+                data: {
+                    labels: timeLabels,
+                    datasets: [{
+                        label: "Packets Ingested",
+                        data: packetRateHistory,
+                        borderColor: "#38bdf8",
+                        backgroundColor: "rgba(56, 189, 248, 0.15)",
+                        fill: true,
+                        tension: 0.35,
+                        borderWidth: 2,
+                        pointRadius: 3,
+                        pointBackgroundColor: "#38bdf8",
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            grid: { color: "rgba(255, 255, 255, 0.05)" },
+                            ticks: { color: "#94a3b8", font: { size: 10 }, maxTicksLimit: 7 }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: "rgba(255, 255, 255, 0.05)" },
+                            ticks: { color: "#94a3b8", font: { size: 10 }, precision: 0 }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => ` Rate: ${ctx.raw} pkts/sample`
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 3. Data Transfer Over Time — Line Graph
+        const ctxData = document.getElementById("chartDataTime");
+        if (ctxData && !chartDataTime) {
+            chartDataTime = new Chart(ctxData, {
+                type: "line",
+                data: {
+                    labels: timeLabels,
+                    datasets: [{
+                        label: "Data Transferred (KB)",
+                        data: dataRateHistory,
+                        borderColor: "#10b981",
+                        backgroundColor: "rgba(16, 185, 129, 0.15)",
+                        fill: true,
+                        tension: 0.35,
+                        borderWidth: 2,
+                        pointRadius: 3,
+                        pointBackgroundColor: "#10b981",
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            grid: { color: "rgba(255, 255, 255, 0.05)" },
+                            ticks: { color: "#94a3b8", font: { size: 10 }, maxTicksLimit: 7 }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: "rgba(255, 255, 255, 0.05)" },
+                            ticks: {
+                                color: "#94a3b8",
+                                font: { size: 10 },
+                                callback: (v) => `${v} KB`
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => ` Throughput: ${ctx.raw} KB`
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 4. Top MAC Addresses by Traffic — Horizontal Bar Chart
+        const ctxMacs = document.getElementById("chartTopMacs");
+        if (ctxMacs && !chartTopMacs) {
+            chartTopMacs = new Chart(ctxMacs, {
+                type: "bar",
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: "Packets Exchanged",
+                        data: [],
+                        backgroundColor: [
+                            "#6366f1",
+                            "#8b5cf6",
+                            "#ec4899",
+                            "#f59e0b",
+                            "#06b6d4",
+                            "#3b82f6"
+                        ],
+                        borderRadius: 6,
+                        borderWidth: 0,
+                        barThickness: 16
+                    }]
+                },
+                options: {
+                    indexAxis: "y",
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            grid: { color: "rgba(255, 255, 255, 0.05)" },
+                            ticks: { color: "#94a3b8", font: { size: 10 }, precision: 0 }
+                        },
+                        y: {
+                            grid: { display: false },
+                            ticks: {
+                                color: "#cbd5e1",
+                                font: { size: 10, family: "'Fira Code', monospace" }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => ` Traffic: ${ctx.raw} packets`
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    // Update Protocol Donut Chart Data
+    function updateProtocolChart() {
+        if (!chartProtocol || capturedPacketsCache.length === 0) return;
+
+        const protoCounts = {
+            TCP: 0,
+            UDP: 0,
+            DNS: 0,
+            HTTPS: 0,
+            HTTP: 0,
+            ARP: 0,
+            ICMP: 0,
+            Other: 0
+        };
+
+        capturedPacketsCache.forEach((pkt) => {
+            const p = (pkt.protocol || "").toUpperCase();
+            if (p === "TCP" || p.includes("TLS")) protoCounts.TCP++;
+            else if (p.includes("HTTPS")) protoCounts.HTTPS++;
+            else if (p.includes("HTTP")) protoCounts.HTTP++;
+            else if (p === "UDP" || p.includes("QUIC") || p.includes("NTP") || p.includes("MDNS") || p.includes("SSDP")) protoCounts.UDP++;
+            else if (p.includes("DNS")) protoCounts.DNS++;
+            else if (p.includes("ARP")) protoCounts.ARP++;
+            else if (p.includes("ICMP")) protoCounts.ICMP++;
+            else protoCounts.Other++;
+        });
+
+        chartProtocol.data.datasets[0].data = [
+            protoCounts.TCP,
+            protoCounts.UDP,
+            protoCounts.DNS,
+            protoCounts.HTTPS,
+            protoCounts.HTTP,
+            protoCounts.ARP,
+            protoCounts.ICMP,
+            protoCounts.Other
+        ];
+        chartProtocol.update("none");
+    }
+
+    // Update Time Series Line Graphs
+    function updateTimeSeriesCharts(statusData) {
+        if (!chartPacketsTime || !chartDataTime) return;
+
+        const currentPkts = statusData.packet_count || capturedPacketsCache.length;
+        const currentBytes = statusData.total_bytes || 0;
+
+        let deltaPkts = currentPkts - previousPktCount;
+        if (deltaPkts < 0 || previousPktCount === 0) deltaPkts = currentPkts;
+
+        let deltaBytes = currentBytes - previousBytes;
+        if (deltaBytes < 0 || previousBytes === 0) deltaBytes = currentBytes;
+
+        const deltaKb = parseFloat((deltaBytes / 1024).toFixed(2));
+
+        previousPktCount = currentPkts;
+        previousBytes = currentBytes;
+
+        const now = new Date();
+        const timeLabel = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}`;
+
+        timeLabels.push(timeLabel);
+        packetRateHistory.push(deltaPkts);
+        dataRateHistory.push(deltaKb);
+
+        if (timeLabels.length > MAX_TIME_SLICES) {
+            timeLabels.shift();
+            packetRateHistory.shift();
+            dataRateHistory.shift();
+        }
+
+        chartPacketsTime.update("none");
+        chartDataTime.update("none");
+    }
+
+    // Periodically fetch MAC analysis for Top MACs Horizontal Bar Chart
+    async function refreshMacAnalyticsForChart() {
+        const now = Date.now();
+        if (now - lastMacFetchTime > 2000) {
+            lastMacFetchTime = now;
+            try {
+                const res = await fetch("/api/mac-analysis");
+                if (res.ok) {
+                    const macData = await res.json();
+                    updateTopMacsChart(macData);
+                }
+            } catch (e) {
+                // Ignore transient network errors
+            }
+        }
+    }
+
+    // Update Top MAC Addresses Horizontal Bar Chart
+    function updateTopMacsChart(macData) {
+        if (!chartTopMacs || !macData || !macData.devices || macData.devices.length === 0) return;
+
+        const topDevices = macData.devices.slice(0, 5);
+        chartTopMacs.data.labels = topDevices.map((d) => {
+            let label = d.mac;
+            if (d.role.includes("Phone")) label += " (Phone)";
+            else if (d.role.includes("Gateway")) label += " (Gateway)";
+            else if (d.cast_type === "Broadcast") label += " (Broadcast)";
+            else if (d.cast_type === "Multicast") label += " (Multicast)";
+            return label;
+        });
+
+        chartTopMacs.data.datasets[0].data = topDevices.map(
+            (d) => d.total_packets || (d.packets_sent + d.packets_received)
+        );
+        chartTopMacs.update("none");
     }
 
     // Utility escape
